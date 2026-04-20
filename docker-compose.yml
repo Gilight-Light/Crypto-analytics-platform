@@ -231,9 +231,9 @@ services:
       - org.apache.spark.deploy.worker.Worker
       - spark://spark-master:7077
       - --cores
-      - "4"
+      - "2"
       - --memory
-      - 3g
+      - 2g
       - --webui-port
       - "8081"
     ports:
@@ -273,8 +273,6 @@ services:
       - spark.driver.host=spark-streaming-bronze
       - --conf
       - spark.cores.max=1
-      - --conf
-      - spark.executor.memory=1g
       - /opt/spark_jobs/streaming/trades_to_iceberg.py
     volumes:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
@@ -314,8 +312,6 @@ services:
       - spark.driver.host=spark-streaming-clickhouse
       - --conf
       - spark.cores.max=1
-      - --conf
-      - spark.executor.memory=1g
       - /opt/spark_jobs/streaming/trades_to_clickhouse.py
     volumes:
       - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
