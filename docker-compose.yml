@@ -243,41 +243,43 @@ services:
       - ./spark_jobs:/opt/spark_jobs:ro
     networks: [platform-net]
 
-  spark-streaming-bronze:
-    image: crypto-platform/spark:3.5.3
-    container_name: spark-streaming-bronze
-    profiles: ["streaming"]
-    restart: unless-stopped
-    depends_on:
-      spark-worker:
-        condition: service_started
-      kafka:
-        condition: service_healthy
-      hive-metastore:
-        condition: service_healthy
-    environment:
-      <<: *common-env
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_TOPIC_RAW_TRADES: ${KAFKA_TOPIC_RAW_TRADES}
-      BRONZE_TRADES_CHECKPOINT: s3a://checkpoints/bronze_trades/
-      BRONZE_TRADES_TABLE: iceberg.bronze.trades
-      MICROBATCH_INTERVAL_SECS: "30"
-      STARTING_OFFSETS: earliest
-    command:
-      - /opt/spark/bin/spark-submit
-      - --master
-      - spark://spark-master:7077
-      - --deploy-mode
-      - client
-      - --conf
-      - spark.driver.host=spark-streaming-bronze
-      - --conf
-      - spark.cores.max=1
-      - /opt/spark_jobs/streaming/trades_to_iceberg.py
-    volumes:
-      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
-      - ./spark_jobs:/opt/spark_jobs:ro
-    networks: [platform-net]
+  # Realtime write Kafka -> Iceberg bronze is paused for now.
+  # Re-enable by uncommenting the block below when the Iceberg lakehouse path is needed.
+  # spark-streaming-bronze:
+  #   image: crypto-platform/spark:3.5.3
+  #   container_name: spark-streaming-bronze
+  #   profiles: ["streaming"]
+  #   restart: unless-stopped
+  #   depends_on:
+  #     spark-worker:
+  #       condition: service_started
+  #     kafka:
+  #       condition: service_healthy
+  #     hive-metastore:
+  #       condition: service_healthy
+  #   environment:
+  #     <<: *common-env
+  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  #     KAFKA_TOPIC_RAW_TRADES: ${KAFKA_TOPIC_RAW_TRADES}
+  #     BRONZE_TRADES_CHECKPOINT: s3a://checkpoints/bronze_trades/
+  #     BRONZE_TRADES_TABLE: iceberg.bronze.trades
+  #     MICROBATCH_INTERVAL_SECS: "30"
+  #     STARTING_OFFSETS: earliest
+  #   command:
+  #     - /opt/spark/bin/spark-submit
+  #     - --master
+  #     - spark://spark-master:7077
+  #     - --deploy-mode
+  #     - client
+  #     - --conf
+  #     - spark.driver.host=spark-streaming-bronze
+  #     - --conf
+  #     - spark.cores.max=1
+  #     - /opt/spark_jobs/streaming/trades_to_iceberg.py
+  #   volumes:
+  #     - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+  #     - ./spark_jobs:/opt/spark_jobs:ro
+  #   networks: [platform-net]
 
   spark-streaming-clickhouse:
     image: crypto-platform/spark:3.5.3
