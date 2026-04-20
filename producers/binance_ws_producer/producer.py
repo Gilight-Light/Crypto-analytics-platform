@@ -6,6 +6,7 @@ import json
 import logging
 import signal
 import sys
+import time
 
 import structlog
 import websockets
@@ -38,7 +39,8 @@ class BinanceTradeProducer:
         self.config = config
         self.producer: AIOKafkaProducer | None = None
         self.shutdown = asyncio.Event()
-        self.stats = {"received": 0, "sent": 0, "errors": 0, "reconnects": 0}
+        self.stats = {"received": 0, "sent": 0, "throttled": 0, "errors": 0, "reconnects": 0}
+        self._last_sent_ts: dict[str, float] = {}
 
     def _stream_url(self) -> str:
         streams = "/".join(f"{s.lower()}@trade" for s in self.config.symbols)
@@ -82,14 +84,23 @@ class BinanceTradeProducer:
             log.warning("bad_message", error=str(exc), preview=raw[:200])
             return
 
-        key = f"{normalized['symbol']}:{normalized['trade_id']}"
+        symbol = normalized["symbol"]
+        if self.config.min_interval_sec > 0:
+            now = time.monotonic()
+            last = self._last_sent_ts.get(symbol, 0.0)
+            if now - last < self.config.min_interval_sec:
+                self.stats["throttled"] += 1
+                return
+            self._last_sent_ts[symbol] = now
+
+        key = f"{symbol}:{normalized['trade_id']}"
         assert self.producer is not None
         await self.producer.send_and_wait(
             self.config.kafka_topic, value=normalized, key=key
         )
         self.stats["sent"] += 1
 
-        if self.stats["sent"] % 100 == 0:
+        if self.stats["sent"] % 50 == 0:
             log.info("progress", **self.stats)
 
     async def _run_ws(self) -> None:

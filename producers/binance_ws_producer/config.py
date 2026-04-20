@@ -11,6 +11,7 @@ class Config:
     symbols: tuple[str, ...]
     binance_ws_base: str
     log_level: str
+    min_interval_sec: float
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -27,4 +28,5 @@ class Config:
                 "BINANCE_WS_BASE", "wss://stream.binance.com:9443"
             ),
             log_level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+            min_interval_sec=float(os.environ.get("PRODUCER_MIN_INTERVAL_SEC", "0")),
         )
