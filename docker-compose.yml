@@ -412,8 +412,10 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET_BRONZE: ${MINIO_BUCKET_BRONZE}
+      AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
     volumes:
       - ./airflow/dags:/opt/airflow/dags:ro
+      - ./spark_jobs:/opt/spark_jobs:ro
       - airflow_logs:/opt/airflow/logs
     networks: [platform-net]
 
@@ -429,6 +431,7 @@ services:
     environment: *airflow-env
     volumes:
       - ./airflow/dags:/opt/airflow/dags:ro
+      - ./spark_jobs:/opt/spark_jobs:ro
       - airflow_logs:/opt/airflow/logs
     healthcheck:
       test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $$HOSTNAME || exit 1"]
@@ -452,6 +455,7 @@ services:
       - "8088:8080"
     volumes:
       - ./airflow/dags:/opt/airflow/dags:ro
+      - ./spark_jobs:/opt/spark_jobs:ro
       - airflow_logs:/opt/airflow/logs
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
