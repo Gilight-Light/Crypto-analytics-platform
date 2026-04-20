@@ -1,0 +1,93 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Latest prices",
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "rawSql": "SELECT symbol, argMaxMerge(price) AS price FROM realtime.price_latest GROUP BY symbol ORDER BY symbol",
+          "format": 1
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/.*price.*/", "values": false},
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "currencyUSD", "decimals": 4},
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "1-minute close price (last 30 min)",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 5},
+      "id": 2,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "rawSql": "SELECT bucket_ts AS time, symbol, argMaxMerge(close) AS close FROM realtime.trades_1m WHERE bucket_ts > now() - INTERVAL 30 MINUTE GROUP BY bucket_ts, symbol ORDER BY bucket_ts",
+          "format": 0
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"custom": {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 10}},
+        "overrides": []
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Trade count last 15 min",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
+      "id": 3,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "rawSql": "SELECT symbol, count() AS trades FROM realtime.trades WHERE trade_time > now() - INTERVAL 15 MINUTE GROUP BY symbol ORDER BY symbol",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Volume (base qty) per minute",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
+      "id": 4,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "grafana-clickhouse-datasource"},
+          "rawSql": "SELECT bucket_ts AS time, symbol, sum(volume) AS volume FROM realtime.trades_1m WHERE bucket_ts > now() - INTERVAL 30 MINUTE GROUP BY bucket_ts, symbol ORDER BY bucket_ts",
+          "format": 0
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["crypto", "realtime"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Trades — real-time",
+  "uid": "trades-realtime",
+  "version": 1,
+  "weekStart": ""
+}

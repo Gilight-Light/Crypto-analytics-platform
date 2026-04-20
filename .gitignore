@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+!.env.example
+
+# Docker volumes / local state
+data/
+volumes/
+.docker-data/
+
+# Airflow
+airflow/logs/
+airflow/plugins/__pycache__/
+airflow-webserver.pid
+standalone_admin_password.txt
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+checkpoints/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Superset
+superset_home/
+
+# Local data stores (bind-mounted volumes if any)
+clickhouse/data/
+grafana/data/
+trino/data/
+minio/data/
+postgres/data/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Local tool metadata / scratch
+.claude/
+.cursor/
+.aider*
+memory/
+CLAUDE.md
+AGENTS.md
+*.prompt
+PROJECT_BRIEF.md
+scratch/
+notes/
+
+# Large data artifacts
+*.parquet
+*.avro
+*.csv.gz
+*.log
+!airflow/dags/**/*.py

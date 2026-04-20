@@ -1,0 +1,3 @@
+CREATE DATABASE hive;
+CREATE DATABASE airflow;
+CREATE DATABASE superset;

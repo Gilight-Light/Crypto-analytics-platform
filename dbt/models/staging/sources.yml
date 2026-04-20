@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: silver
+    database: iceberg
+    schema: silver
+    tables:
+      - name: trades
+        description: "Deduplicated trades (built by Spark batch bronze_to_silver_trades)"
