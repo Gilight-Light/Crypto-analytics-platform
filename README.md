@@ -45,6 +45,9 @@ flowchart LR
     BREST --> AF
     CG --> AF
     AF --> ICE
+    AF -.spark-submit.-> SS1
+    AF -.spark-submit.-> SS2
+    AF -.spark-submit.-> SB
 
     K --> SS1 --> CH
     K --> SS2 --> ICE
@@ -75,20 +78,20 @@ Both pipelines consume **the same Kafka topic** with **independent checkpoints**
 ### 1. Ingestion
 
 - [**Binance WebSocket producer**](producers/binance_ws_producer/) — Python asyncio service that subscribes to a combined `@trade` stream for 5 symbols (BTC, ETH, SOL, BNB, XRP) over a single connection, normalizes Binance's short field names into an internal schema ([`schema.py`](producers/binance_ws_producer/schema.py)), and publishes to Kafka with key `"<SYMBOL>:<TRADE_ID>"`. Keyed produce pins each symbol to a single partition, preserving per-symbol ordering for downstream consumers. Uses `enable_idempotence=True`, `acks="all"`, gzip compression, and exponential backoff reconnect.
-- [**Airflow DAGs**](airflow/dags/) — `LocalExecutor` runs two DAGs: `binance_klines_backfill` (daily, 1h OHLCV to Bronze parquet) and `coingecko_snapshot` (hourly, top 250 coins by market cap). Idempotent via deterministic S3 paths templated with `{{ ds }}` and `{{ ts_nodash }}`.
+- [**Airflow DAGs**](airflow/dags/) — `LocalExecutor` orchestrates all non-producer workloads. Ingestion: `binance_klines_backfill` (daily, 1h OHLCV to Bronze parquet) and `coingecko_snapshot` (hourly, top 250 coins by market cap). Spark jobs (below) are submitted via `SparkSubmitOperator` over the `spark_default` connection (`spark://spark-master:7077`). Idempotent via deterministic S3 paths templated with `{{ ds }}` and `{{ ts_nodash }}`.
 
 ### 2. Stream processing
 
-Two Spark Structured Streaming jobs, each deployed as its own container running `spark-submit` in client mode:
+Two Spark Structured Streaming jobs, both submitted to the standalone cluster by Airflow via `SparkSubmitOperator` (client mode, driver runs in the Airflow scheduler container):
 
-- [**`trades_to_clickhouse.py`**](spark_jobs/streaming/trades_to_clickhouse.py) — 10-second micro-batches, JDBC sink via `foreachBatch` (no native Spark → ClickHouse streaming sink exists at the time of writing; the idiomatic workaround is to drop to batch API per micro-batch). `isolationLevel=NONE` is required because ClickHouse has no transaction protocol. At-least-once + ClickHouse's `ReplacingMergeTree` dedup on `(symbol, trade_id)` gives effective exactly-once semantics for this sink.
-- [**`trades_to_iceberg.py`**](spark_jobs/streaming/trades_to_iceberg.py) — 30-second micro-batches, native Iceberg streaming sink. Atomic commits through the Iceberg transaction log give true exactly-once writes. Partitioned by `(symbol, days(kafka_timestamp))` for partition pruning on symbol-scoped queries.
+- [**`trades_to_clickhouse.py`**](spark_jobs/streaming/trades_to_clickhouse.py) — DAG `spark_trades_to_clickhouse` (manual trigger). 10-second micro-batches, JDBC sink via `foreachBatch` (no native Spark → ClickHouse streaming sink exists at the time of writing; the idiomatic workaround is to drop to batch API per micro-batch). `isolationLevel=NONE` is required because ClickHouse has no transaction protocol. At-least-once + ClickHouse's `ReplacingMergeTree` dedup on `(symbol, trade_id)` gives effective exactly-once semantics for this sink.
+- [**`trades_to_iceberg.py`**](spark_jobs/streaming/trades_to_iceberg.py) — DAG `spark_trades_to_iceberg` (manual trigger). 30-second micro-batches, native Iceberg streaming sink. Atomic commits through the Iceberg transaction log give true exactly-once writes. Partitioned by `(symbol, days(kafka_timestamp))` for partition pruning on symbol-scoped queries.
 
-Checkpoints live on MinIO at `s3a://checkpoints/<job>/`. Restarts resume from the last committed offset; stopping and starting the container is safe and lossless.
+Checkpoints live on MinIO at `s3a://checkpoints/<job>/`. Restarts resume from the last committed offset; stopping the Airflow task and re-triggering is safe and lossless.
 
 ### 3. Batch processing
 
-- [**`bronze_to_silver_trades.py`**](spark_jobs/batch/bronze_to_silver_trades.py) — deduplicates Bronze using a `row_number()` window keyed on `(symbol, trade_id)` ordered by `kafka_timestamp DESC`, keeping the latest replica of any duplicates. Writes to `iceberg.silver.trades` partitioned by symbol.
+- [**`bronze_to_silver_trades.py`**](spark_jobs/batch/bronze_to_silver_trades.py) — DAG `spark_bronze_to_silver_trades` (`@hourly`). Deduplicates Bronze using a `row_number()` window keyed on `(symbol, trade_id)` ordered by `kafka_timestamp DESC`, keeping the latest replica of any duplicates. Writes to `iceberg.silver.trades` partitioned by symbol.
 - [**dbt models**](dbt/models/) — `stg_trades` (view over Silver) and `fact_trades_1h` (1h OHLCV rollup into `iceberg.gold.*`). Profile targets Trino; materializations match the medallion layer.
 
 ### 4. Serving
@@ -167,10 +170,12 @@ Bring up subsets to match available RAM:
 
 ```bash
 make up                             # foundation only (~1.6 GB)
-make up PROFILES="streaming"        # + real-time path (~5 GB)
-make up PROFILES="batch"            # + Airflow (~7 GB)
+make up PROFILES="streaming"        # + Kafka, producer, ClickHouse, Grafana (~5 GB)
+make up PROFILES="batch"            # + Airflow + Spark cluster (~7 GB)
 make up PROFILES="serving"          # + Trino + Superset (~9 GB)
 ```
+
+All Spark jobs (streaming + batch) are submitted by Airflow via `SparkSubmitOperator`, so the `batch` profile is required to run any Spark workload. For the hot path, run `PROFILES="streaming batch"` and trigger `spark_trades_to_clickhouse` from the Airflow UI.
 
 Recommended: Docker Desktop with at least 12 GB RAM allocated to run all profiles simultaneously. Default 7.6 GB works for any two profiles at a time.
 
@@ -210,7 +215,7 @@ crypto-analytics-platform/
 │   ├── streaming/               # trades_to_{clickhouse,iceberg}.py
 │   ├── batch/                   # bronze_to_silver_trades.py
 │   └── query_bronze.py          # ad-hoc verification
-├── airflow/dags/                # Binance klines + CoinGecko DAGs
+├── airflow/dags/                # ingestion DAGs + spark_submit DAGs (streaming + batch)
 ├── dbt/models/                  # staging (views) + marts (tables, iceberg.gold.*)
 ├── clickhouse/init.sql          # DDL + materialized views for OHLCV
 ├── hive-metastore/              # custom image + idempotent entrypoint

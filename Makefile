@@ -13,7 +13,8 @@ help: ## Show this help
 env: ## Create .env from .env.example if missing
 	@test -f .env || (cp .env.example .env && echo "Created .env from template")
 
-build: ## Build images that have a Dockerfile
+build: ## Build images that have a Dockerfile (spark first; airflow image inherits from it)
+	$(COMPOSE) $(PROFILE_FLAGS) build spark-master
 	$(COMPOSE) $(PROFILE_FLAGS) build
 
 up: env ## Bring up the stack (set PROFILES="..." to add optional profiles)

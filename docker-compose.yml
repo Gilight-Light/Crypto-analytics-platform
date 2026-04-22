@@ -243,83 +243,6 @@ services:
       - ./spark_jobs:/opt/spark_jobs:ro
     networks: [platform-net]
 
-  # Realtime write Kafka -> Iceberg bronze is paused for now.
-  # Re-enable by uncommenting the block below when the Iceberg lakehouse path is needed.
-  # spark-streaming-bronze:
-  #   image: crypto-platform/spark:3.5.3
-  #   container_name: spark-streaming-bronze
-  #   profiles: ["streaming"]
-  #   restart: unless-stopped
-  #   depends_on:
-  #     spark-worker:
-  #       condition: service_started
-  #     kafka:
-  #       condition: service_healthy
-  #     hive-metastore:
-  #       condition: service_healthy
-  #   environment:
-  #     <<: *common-env
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     KAFKA_TOPIC_RAW_TRADES: ${KAFKA_TOPIC_RAW_TRADES}
-  #     BRONZE_TRADES_CHECKPOINT: s3a://checkpoints/bronze_trades/
-  #     BRONZE_TRADES_TABLE: iceberg.bronze.trades
-  #     MICROBATCH_INTERVAL_SECS: "30"
-  #     STARTING_OFFSETS: earliest
-  #   command:
-  #     - /opt/spark/bin/spark-submit
-  #     - --master
-  #     - spark://spark-master:7077
-  #     - --deploy-mode
-  #     - client
-  #     - --conf
-  #     - spark.driver.host=spark-streaming-bronze
-  #     - --conf
-  #     - spark.cores.max=1
-  #     - /opt/spark_jobs/streaming/trades_to_iceberg.py
-  #   volumes:
-  #     - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
-  #     - ./spark_jobs:/opt/spark_jobs:ro
-  #   networks: [platform-net]
-
-  spark-streaming-clickhouse:
-    image: crypto-platform/spark:3.5.3
-    container_name: spark-streaming-clickhouse
-    profiles: ["streaming"]
-    restart: unless-stopped
-    depends_on:
-      spark-worker:
-        condition: service_started
-      kafka:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-    environment:
-      <<: *common-env
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_TOPIC_RAW_TRADES: ${KAFKA_TOPIC_RAW_TRADES}
-      CLICKHOUSE_TRADES_CHECKPOINT: s3a://checkpoints/clickhouse_trades/
-      CLICKHOUSE_JDBC_URL: jdbc:clickhouse://clickhouse:8123/realtime
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
-      CLICKHOUSE_TRADES_TABLE: realtime.trades
-      MICROBATCH_INTERVAL_SECS: "10"
-      STARTING_OFFSETS: latest
-    command:
-      - /opt/spark/bin/spark-submit
-      - --master
-      - spark://spark-master:7077
-      - --deploy-mode
-      - client
-      - --conf
-      - spark.driver.host=spark-streaming-clickhouse
-      - --conf
-      - spark.cores.max=1
-      - /opt/spark_jobs/streaming/trades_to_clickhouse.py
-    volumes:
-      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
-      - ./spark_jobs:/opt/spark_jobs:ro
-    networks: [platform-net]
-
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: clickhouse
@@ -415,9 +338,20 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET_BRONZE: ${MINIO_BUCKET_BRONZE}
       AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_RAW_TRADES: ${KAFKA_TOPIC_RAW_TRADES}
+      CLICKHOUSE_JDBC_URL: jdbc:clickhouse://clickhouse:8123/realtime
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_TRADES_TABLE: realtime.trades
+      CLICKHOUSE_TRADES_CHECKPOINT: s3a://checkpoints/clickhouse_trades/
+      BRONZE_TRADES_TABLE: iceberg.bronze.trades
+      BRONZE_TRADES_CHECKPOINT: s3a://checkpoints/bronze_trades/
+      SPARK_DRIVER_HOST: airflow-scheduler
     volumes:
       - ./airflow/dags:/opt/airflow/dags:ro
       - ./spark_jobs:/opt/spark_jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - airflow_logs:/opt/airflow/logs
     networks: [platform-net]
 
@@ -434,6 +368,7 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags:ro
       - ./spark_jobs:/opt/spark_jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - airflow_logs:/opt/airflow/logs
     healthcheck:
       test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $$HOSTNAME || exit 1"]
@@ -458,6 +393,7 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags:ro
       - ./spark_jobs:/opt/spark_jobs:ro
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - airflow_logs:/opt/airflow/logs
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
